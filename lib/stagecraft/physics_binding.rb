@@ -9,7 +9,10 @@ module Stagecraft
     end
 
     def bind(node, body)
+      raise ArgumentError, "physics binding requires a Stagecraft::Node" unless node.is_a?(Node)
+
       validate_body!(body)
+      unbind(node)
       @entries << Entry.new(
         node:,
         body:,
@@ -50,11 +53,11 @@ module Stagecraft
     end
 
     def vector(value)
-      value.is_a?(Larb::Vec3) ? value : Larb::Vec3.new(*value.to_a)
+      Larb::Vec3.new(*value.to_a)
     end
 
     def quaternion(value)
-      value.is_a?(Larb::Quat) ? value : Larb::Quat.new(*value.to_a)
+      Larb::Quat.new(*value.to_a)
     end
   end
 end

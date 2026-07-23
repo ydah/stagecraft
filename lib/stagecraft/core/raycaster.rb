@@ -7,14 +7,17 @@ module Stagecraft
     attr_reader :origin, :direction, :near, :far
 
     def initialize(origin: Larb::Vec3.new, direction: Larb::Vec3.forward, near: 0.0, far: Float::INFINITY)
-      @near = near.to_f
-      @far = far.to_f
+      @near = Float(near)
+      @far = Float(far)
+      raise ArgumentError, "ray near distance cannot be negative" if @near.negative?
+      raise ArgumentError, "ray far distance must not be less than near" if @far < @near
+
       set(origin, direction)
     end
 
     def set(origin, direction)
-      @origin = origin.respond_to?(:to_larb) ? origin.to_larb : origin
-      value = direction.respond_to?(:to_larb) ? direction.to_larb : direction
+      @origin = vector(origin)
+      value = vector(direction)
       raise ArgumentError, "ray direction cannot be zero" if value.length.zero?
 
       @direction = value.normalize
@@ -25,7 +28,8 @@ module Stagecraft
       inverse = camera.view_projection_matrix.inverse
       near_point = unproject(inverse, ndc_x, ndc_y, 0.0)
       far_point = unproject(inverse, ndc_x, ndc_y, 1.0)
-      set(near_point, far_point - near_point)
+      ray_origin = camera.is_a?(Cameras::Perspective) ? camera.world_position : near_point
+      set(ray_origin, far_point - ray_origin)
     end
 
     def intersect(root, recursive: true)
@@ -38,6 +42,11 @@ module Stagecraft
     def unproject(matrix, x, y, z)
       value = matrix * Larb::Vec4.new(x, y, z, 1.0)
       value.perspective_divide
+    end
+
+    def vector(value)
+      source = value.respond_to?(:to_larb) ? value.to_larb : value
+      Larb::Vec3.new(*source.to_a)
     end
 
     def intersect_mesh(node)

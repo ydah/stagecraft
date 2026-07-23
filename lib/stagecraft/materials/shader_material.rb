@@ -11,7 +11,7 @@ module Stagecraft
 
       versioned_attribute :wgsl, coerce: lambda { |value|
         source = value.respond_to?(:to_wgsl) ? value.to_wgsl : value
-        String(source)
+        String(source).dup.freeze
       }
       versioned_attribute :uniforms, coerce: ->(value) { value.transform_keys(&:to_sym).freeze }
     end

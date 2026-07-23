@@ -32,4 +32,32 @@ RSpec.describe Stagecraft::Renderer::PipelineFactory do
 
     expect(second).not_to eq(first)
   end
+
+  it "separates custom shader pipelines while reusing compatible layouts" do
+    first = Stagecraft::Materials::Shader.new(
+      wgsl: "fn first() {}",
+      uniforms: { amount: 1.0 }
+    )
+    second = Stagecraft::Materials::Shader.new(
+      wgsl: "fn second() {}",
+      uniforms: { amount: 2.0 }
+    )
+    first_layout = factory.send(:material_layout_signature, first)
+    second_layout = factory.send(:material_layout_signature, second)
+
+    expect(first_layout).to eq(second_layout)
+    expect(factory.send(:material_pipeline_signature, first, first_layout))
+      .not_to eq(factory.send(:material_pipeline_signature, second, second_layout))
+  end
+
+  it "allows custom textures in vertex and fragment stages" do
+    material = Stagecraft::Materials::Shader.new(
+      wgsl: "",
+      uniforms: { map: Stagecraft::Texture.new }
+    )
+    texture_entries = factory.send(:material_layout_entries, material).drop(1)
+
+    expect(texture_entries).not_to be_empty
+    expect(texture_entries).to all(include(visibility: %i[vertex fragment]))
+  end
 end

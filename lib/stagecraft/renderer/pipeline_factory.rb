@@ -37,7 +37,7 @@ module Stagecraft
         material = item.mesh.material
         layout_signature = material_layout_signature(material)
         key = PipelineCache::Key.new(
-          material_class: [material.class, layout_signature],
+          material_class: material_pipeline_signature(material, layout_signature),
           feature_bits: Features.bits(item.features),
           vertex_layout_id: Features.vertex_layout_id(item.mesh.geometry),
           blend_state: material.blend,
@@ -219,10 +219,20 @@ module Stagecraft
         when Materials::Unlit then :unlit
         when Materials::Shader
           packed = UniformPacker.new.pack(material.uniforms)
-          [:shader, packed.fields.map { |field| [field.name, field.type] }, packed.textures.map(&:first)].hash
+          [
+            :shader,
+            packed.fields.map { |field| [field.name, field.type] },
+            packed.textures.map(&:first)
+          ]
         else
           material.class.name
         end
+      end
+
+      def material_pipeline_signature(material, layout_signature)
+        return [material.class, layout_signature, material.wgsl] if material.is_a?(Materials::Shader)
+
+        [material.class, layout_signature]
       end
 
       def material_layout_entries(material)
@@ -244,8 +254,16 @@ module Stagecraft
         when Materials::Shader
           UniformPacker.new.pack(material.uniforms).textures.each_index do |index|
             binding = 1 + (index * 2)
-            base << { binding:, visibility: :fragment, sampler: { type: :filtering } }
-            base << { binding: binding + 1, visibility: :fragment, texture: { sample_type: :float } }
+            base << {
+              binding:,
+              visibility: %i[vertex fragment],
+              sampler: { type: :filtering }
+            }
+            base << {
+              binding: binding + 1,
+              visibility: %i[vertex fragment],
+              texture: { sample_type: :float }
+            }
           end
         end
         base

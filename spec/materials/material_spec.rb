@@ -23,3 +23,15 @@ RSpec.describe Stagecraft::Materials::PBR do
     expect(described_class.new).not_to be_transparent
   end
 end
+
+RSpec.describe Stagecraft::Materials::Shader do
+  it "owns an immutable copy of generated WGSL" do
+    source = +"fn original() {}"
+    material = described_class.new(wgsl: source)
+
+    source.replace("fn changed() {}")
+
+    expect(material.wgsl).to eq("fn original() {}")
+    expect(material.wgsl).to be_frozen
+  end
+end

@@ -23,7 +23,7 @@ module Stagecraft
       end
 
       def direction
-        rotation.to_larb * Larb::Vec3.forward
+        world_matrix.extract_rotation * Larb::Vec3.forward
       end
     end
   end

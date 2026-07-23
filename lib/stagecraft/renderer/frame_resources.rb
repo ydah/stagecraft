@@ -31,6 +31,9 @@ module Stagecraft
         create_shadow_resources
         create_fallback_textures
         resize(context.width, context.height)
+      rescue StandardError
+        dispose_after_failed_initialization
+        raise
       end
 
       def resize(width, height)
@@ -66,8 +69,7 @@ module Stagecraft
         return self if next_size == @shadow_size
 
         release_resource(@shadow_view)
-        @shadow_texture.destroy if @shadow_texture.respond_to?(:destroy)
-        @shadow_texture.release if @shadow_texture.respond_to?(:release)
+        destroy_texture(@shadow_texture)
         create_shadow_texture(next_size)
         recreate_frame_groups
         self
@@ -94,19 +96,30 @@ module Stagecraft
 
       def dispose
         release_attachments
-        release_resource(@shadow_sampler, @shadow_view, @shadow_texture)
-        [fallback_white, fallback_black, fallback_normal].each { |resource| release_gpu_texture(resource) }
+        release_resource(@shadow_sampler, @shadow_view)
+        destroy_texture(@shadow_texture)
+        [fallback_white, fallback_black, fallback_normal].compact.each do |resource|
+          release_gpu_texture(resource)
+        end
         release_resource(@frame_group, @shadow_frame_group, @object_group, @empty_group)
         @skin_bindings.each_value do |binding|
           release_resource(binding.bind_group)
           destroy_buffer(binding.buffer)
         end
         @skin_bindings.clear
-        release_resource(@frame_buffer, @lights_buffer, @object_buffer, @joint_buffer)
+        [@frame_buffer, @lights_buffer, @object_buffer, @joint_buffer].compact.each do |buffer|
+          destroy_buffer(buffer)
+        end
         release_resource(frame_layout, object_layout, empty_layout, shadow_frame_layout)
       end
 
       private
+
+      def dispose_after_failed_initialization
+        dispose
+      rescue StandardError
+        nil
+      end
 
       def create_layouts
         @frame_layout = device.create_bind_group_layout(
@@ -140,14 +153,17 @@ module Stagecraft
         @frame_buffer = device.create_buffer(
           label: "stagecraft frame uniforms", size: 256, usage: %i[uniform copy_dst]
         )
+        stats.increment(:buffers)
         @lights_buffer = device.create_buffer(
           label: "stagecraft lights", size: LIGHT_SIZE, usage: %i[storage copy_dst]
         )
+        stats.increment(:buffers)
         @joint_buffer = device.create_buffer(
           label: "stagecraft empty joints", size: 64, usage: %i[storage copy_dst]
         )
+        stats.increment(:buffers)
         @object_buffer = create_object_buffer
-        stats.increment(:buffers, 4)
+        stats.increment(:buffers)
       end
 
       def create_shadow_resources
@@ -413,8 +429,7 @@ module Stagecraft
       def release_attachments
         release_resource(@hdr_view, @hdr_msaa_view, @depth_view, @output_view)
         [@hdr_texture, @hdr_msaa_texture, @depth_texture, @output_texture].compact.each do |texture|
-          texture.destroy if texture.respond_to?(:destroy)
-          texture.release if texture.respond_to?(:release)
+          destroy_texture(texture)
         end
         @hdr_texture = @hdr_view = @hdr_msaa_texture = @hdr_msaa_view = nil
         @depth_texture = @depth_view = @output_texture = @output_view = nil
@@ -423,9 +438,13 @@ module Stagecraft
       def release_gpu_texture(resource)
         resource.view.release if resource.view.respond_to?(:release)
         resource.sampler.release if resource.sampler.respond_to?(:release)
-        resource.texture.destroy if resource.texture.respond_to?(:destroy)
-        resource.texture.release if resource.texture.respond_to?(:release)
+        destroy_texture(resource.texture)
         stats.decrement(:textures)
+      end
+
+      def destroy_texture(texture)
+        texture.destroy if texture.respond_to?(:destroy)
+        texture.release if texture.respond_to?(:release)
       end
 
       def destroy_buffer(buffer)

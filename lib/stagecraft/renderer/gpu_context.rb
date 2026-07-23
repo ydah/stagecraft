@@ -10,6 +10,7 @@ module Stagecraft
         @width = Integer(width)
         @height = Integer(height)
         @owns_device = device.nil?
+        @disposed = false
         if device
           @device = device
           @queue = queue || device.queue
@@ -20,6 +21,9 @@ module Stagecraft
         end
         @surface_format = choose_surface_format
         configure_surface if @surface
+      rescue StandardError
+        dispose_after_failed_initialization
+        raise
       end
 
       def resize(width, height)
@@ -45,17 +49,41 @@ module Stagecraft
       end
 
       def dispose
-        surface&.unconfigure
-        surface&.release
-        return unless @owns_device
+        return self if @disposed
 
-        device.destroy if device.respond_to?(:destroy)
-        device.release if device.respond_to?(:release)
-        adapter.release if adapter&.respond_to?(:release)
-        instance.release if instance&.respond_to?(:release)
+        @disposed = true
+        cleanups = [
+          -> { surface&.unconfigure },
+          -> { surface&.release }
+        ]
+        if @owns_device
+          cleanups.concat(
+            [
+              -> { device.destroy if device.respond_to?(:destroy) },
+              -> { device.release if device.respond_to?(:release) },
+              -> { adapter.release if adapter&.respond_to?(:release) },
+              -> { instance.release if instance&.respond_to?(:release) }
+            ]
+          )
+        end
+        first_error = nil
+        cleanups.each do |cleanup|
+          cleanup.call
+        rescue StandardError => error
+          first_error ||= error
+        end
+        raise first_error if first_error
+
+        self
       end
 
       private
+
+      def dispose_after_failed_initialization
+        dispose
+      rescue StandardError
+        nil
+      end
 
       def initialize_wgpu
         require "wgpu"

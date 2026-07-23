@@ -33,6 +33,9 @@ module Stagecraft
         stats:, sample_count: @sample_count
       )
       create_post_resources
+    rescue StandardError
+      dispose_after_failed_initialization
+      raise
     end
 
     def render(scene, camera)
@@ -98,15 +101,22 @@ module Stagecraft
     def dispose
       return self if @disposed
 
-      if @resource_cache&.live_count&.positive? && ENV["STAGECRAFT_DEBUG"] == "1"
-        warn "Stagecraft renderer disposed with #{@resource_cache.live_count} live CPU resources"
-      end
-      release_post_resources
-      @pipelines&.dispose
-      @resource_cache&.dispose_all
-      @resources&.dispose
-      @context&.dispose
       @disposed = true
+      first_error = nil
+      [
+        -> { warn_live_resources },
+        -> { release_post_resources },
+        -> { @pipelines&.dispose },
+        -> { @resource_cache&.dispose_all },
+        -> { @resources&.dispose },
+        -> { @context&.dispose }
+      ].each do |cleanup|
+        cleanup.call
+      rescue StandardError => error
+        first_error ||= error
+      end
+      raise first_error if first_error
+
       self
     end
 
@@ -115,6 +125,19 @@ module Stagecraft
     end
 
     private
+
+    def dispose_after_failed_initialization
+      dispose
+    rescue StandardError
+      nil
+    end
+
+    def warn_live_resources
+      return unless ENV["STAGECRAFT_DEBUG"] == "1"
+      return unless @resource_cache&.live_count&.positive?
+
+      warn "Stagecraft renderer disposed with #{@resource_cache.live_count} live CPU resources"
+    end
 
     def resize_from_window
       return unless @window&.respond_to?(:drawable_size)

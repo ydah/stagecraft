@@ -20,17 +20,21 @@ module Stagecraft
         @time_scale = 1.0
         @enabled = true
         @clamp_when_finished = true
-        @direction = 1.0
+        @ping_pong_phase = 0.0
       end
 
       def advance(dt)
         return time unless enabled
 
-        update_fade(dt)
+        elapsed = Float(dt)
+        update_fade(elapsed)
         duration = clip.duration
         return @time = 0.0 if duration.zero?
 
-        @time += Float(dt) * time_scale * @direction
+        delta = elapsed * time_scale
+        return advance_ping_pong(delta, duration) if loop == :ping_pong
+
+        @time += delta
         apply_loop(duration)
         time
       end
@@ -45,7 +49,7 @@ module Stagecraft
       def update_fade(dt)
         return unless @fade_duration.positive? && weight < 1.0
 
-        @fade_elapsed += dt
+        @fade_elapsed += [dt, 0.0].max
         @weight = [@fade_elapsed / @fade_duration, 1.0].min
       end
 
@@ -53,20 +57,22 @@ module Stagecraft
         case loop
         when :repeat
           @time %= duration
-        when :ping_pong
-          if @time > duration
-            @time = duration - (@time - duration)
-            @direction = -1.0
-          elsif @time.negative?
-            @time = -@time
-            @direction = 1.0
-          end
         when :once
           return unless @time > duration || @time.negative?
 
           @time = @time.clamp(0.0, duration)
           @enabled = false unless clamp_when_finished
         end
+      end
+
+      def advance_ping_pong(delta, duration)
+        period = duration * 2.0
+        @ping_pong_phase = (@ping_pong_phase + delta) % period
+        @time = if @ping_pong_phase <= duration
+                  @ping_pong_phase
+                else
+                  period - @ping_pong_phase
+                end
       end
     end
   end

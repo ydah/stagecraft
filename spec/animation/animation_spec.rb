@@ -66,4 +66,15 @@ RSpec.describe Stagecraft::Animation do
 
     expect(mesh.morph_weights).to contain_exactly(be_within(1.0e-6).of(1.25))
   end
+
+  it "keeps ping-pong actions in range across multiple crossings and reverse playback" do
+    clip = described_class::Clip.new(tracks: [], duration: 1.0)
+    action = described_class::Action.new(clip, loop: :ping_pong)
+
+    expect(action.advance(5.25)).to be_within(1.0e-6).of(0.75)
+    expect(action.advance(0.5)).to be_within(1.0e-6).of(0.25)
+
+    action.time_scale = -1.0
+    expect(action.advance(1.0)).to be_within(1.0e-6).of(0.75)
+  end
 end

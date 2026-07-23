@@ -36,4 +36,21 @@ RSpec.describe Stagecraft::Renderer::Features do
     expect(unlit).to include("@location(4) color: vec3f")
     expect(unlit).to include("material.color * input.color")
   end
+
+  it "reconstructs a tangent frame for normal maps without tangent attributes" do
+    geometry = Stagecraft::Geometries.plane
+    material = Stagecraft::Materials::PBR.new(normal_map: Stagecraft::Texture.new)
+    mesh = Stagecraft::Mesh.new(geometry, material)
+
+    source = Stagecraft::Renderer::Shaders.compose(
+      "pbr.wgsl",
+      defines: described_class.for(mesh)
+    )
+
+    expect(source).to include("fn cotangent_frame")
+    expect(source).to include(
+      "normal = normalize(cotangent_frame(normal, input.world_position, uv) * mapped);"
+    )
+    expect(source).not_to include("@location(3) tangent: vec4f")
+  end
 end

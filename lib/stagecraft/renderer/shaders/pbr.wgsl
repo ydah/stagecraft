@@ -142,6 +142,24 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3f) -> vec3f {
   return f0 + (vec3f(1.0) - f0) * pow(1.0 - cos_theta, 5.0);
 }
 
+fn cotangent_frame(surface_normal: vec3f, position: vec3f, uv: vec2f) -> mat3x3f {
+  let position_dx = dpdx(position);
+  let position_dy = dpdy(position);
+  let uv_dx = dpdx(uv);
+  let uv_dy = dpdy(uv);
+  let position_dy_perp = cross(position_dy, surface_normal);
+  let position_dx_perp = cross(surface_normal, position_dx);
+  let tangent = position_dy_perp * uv_dx.x + position_dx_perp * uv_dy.x;
+  let bitangent = position_dy_perp * uv_dx.y + position_dx_perp * uv_dy.y;
+  let squared_scale = max(dot(tangent, tangent), dot(bitangent, bitangent));
+  let inverse_scale = inverseSqrt(max(squared_scale, 1.0e-8));
+  return mat3x3f(
+    tangent * inverse_scale,
+    bitangent * inverse_scale,
+    surface_normal
+  );
+}
+
 @fragment fn fs_main(
   input: VertexOutput,
   @builtin(front_facing) front_facing: bool
@@ -177,7 +195,7 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3f) -> vec3f {
     let bitangent = normalize(cross(normal, input.tangent.xyz)) * input.tangent.w;
     normal = normalize(mat3x3f(input.tangent.xyz, bitangent, normal) * mapped);
 //#else
-    normal = normalize(normal + mapped);
+    normal = normalize(cotangent_frame(normal, input.world_position, uv) * mapped);
 //#endif
   }
   let view_direction = normalize(frame.camera_pos - input.world_position);

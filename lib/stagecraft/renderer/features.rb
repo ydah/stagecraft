@@ -21,6 +21,8 @@ module Stagecraft
       def for(mesh)
         values = Set.new
         ATTRIBUTE_FEATURES.each { |attribute, feature| values << feature if mesh.geometry.attribute(attribute) }
+        color = mesh.geometry.attribute(:color)
+        values << :COLOR_VEC3 if color && color.components == 3
         material_features(mesh.material, values)
         values << :SKINNED if mesh.skin
         values.freeze

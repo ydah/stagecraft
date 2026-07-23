@@ -118,8 +118,6 @@ module Stagecraft
 
     private
 
-    attr_writer :parent
-
     def parent=(value)
       @parent = value
       @cached_parent_identity = nil

@@ -96,6 +96,43 @@ RSpec.describe Stagecraft::Loaders::GLTF do
     expect(material.uv_transform.to_a).not_to eq(Larb::Mat3.new.to_a)
   end
 
+  it "expands normalized RGB colors to a WebGPU-compatible four-component format" do
+    positions = [0, 0, 0, 1, 0, 0, 0, 1, 0].pack("e*")
+    colors = [255, 0, 0, 0, 255, 0, 0, 0, 255].pack("C*")
+    buffer = positions + colors
+    json = {
+      "asset" => { "version" => "2.0" },
+      "buffers" => [{ "byteLength" => buffer.bytesize }],
+      "bufferViews" => [
+        { "buffer" => 0, "byteOffset" => 0, "byteLength" => positions.bytesize },
+        { "buffer" => 0, "byteOffset" => positions.bytesize, "byteLength" => colors.bytesize }
+      ],
+      "accessors" => [
+        { "bufferView" => 0, "componentType" => 5_126, "count" => 3, "type" => "VEC3" },
+        {
+          "bufferView" => 1, "componentType" => 5_121, "normalized" => true,
+          "count" => 3, "type" => "VEC3"
+        }
+      ],
+      "meshes" => [
+        { "primitives" => [{ "attributes" => { "POSITION" => 0, "COLOR_0" => 1 } }] }
+      ],
+      "nodes" => [{ "name" => "colored", "mesh" => 0 }],
+      "scenes" => [{ "nodes" => [0] }],
+      "scene" => 0
+    }
+
+    result = described_class.load(Rgltf.load_json(json, buffers: buffer))
+    color = result.scene.find("colored").children.first.geometry.attribute(:color)
+
+    expect(color.format).to eq(:unorm8x4)
+    expect(color.data.bytes).to eq([
+      255, 0, 0, 255,
+      0, 255, 0, 255,
+      0, 0, 255, 255
+    ])
+  end
+
   def gltf_buffer
     @gltf_buffer ||= begin
       positions = [0, 0, 0, 1, 0, 0, 0, 1, 0].pack("e*")

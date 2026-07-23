@@ -3,7 +3,7 @@
 module Stagecraft
   class Renderer
     class FrameResources
-      SkinBinding = Struct.new(:skin, :buffer, :bind_group)
+      SkinBinding = Struct.new(:mesh, :skin, :buffer, :bind_group)
       OBJECT_SLOT_SIZE = 256
       OBJECT_DATA_SIZE = 144
       FRAMES_IN_FLIGHT = 3
@@ -365,12 +365,13 @@ module Stagecraft
       end
 
       def write_skins(items)
+        prune_skin_bindings(items)
         items.each do |item|
           mesh = item.mesh
           next unless mesh.skin
 
           binding = @skin_bindings[mesh.object_id]
-          if !binding || !binding.skin.equal?(mesh.skin)
+          if !binding || !binding.mesh.equal?(mesh) || !binding.skin.equal?(mesh.skin)
             if binding
               release_resource(binding.bind_group)
               destroy_buffer(binding.buffer)
@@ -382,13 +383,26 @@ module Stagecraft
               usage: %i[storage copy_dst]
             )
             stats.increment(:buffers)
-            binding = SkinBinding.new(mesh.skin, buffer, create_object_group(buffer))
+            binding = SkinBinding.new(mesh, mesh.skin, buffer, create_object_group(buffer))
             @skin_bindings[mesh.object_id] = binding
           end
           matrices = mesh.skin.joint_matrices(mesh)
           bytes = matrices.empty? ? Larb::Mat4.identity.to_a.pack("e*") :
                                     matrices.flat_map(&:to_a).pack("e*")
           queue.write_buffer(binding.buffer, 0, bytes)
+        end
+      end
+
+      def prune_skin_bindings(items)
+        active = items.filter_map do |item|
+          [item.mesh.object_id, item.mesh] if item.mesh.skin
+        end.to_h
+        @skin_bindings.delete_if do |object_id, binding|
+          next false if active[object_id]&.equal?(binding.mesh)
+
+          release_resource(binding.bind_group)
+          destroy_buffer(binding.buffer)
+          true
         end
       end
 

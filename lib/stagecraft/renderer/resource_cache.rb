@@ -5,7 +5,7 @@ module Stagecraft
     class ResourceCache
       GPUGeometry = Data.define(:vertex_buffers, :index_buffer, :index_format, :index_count, :vertex_count, :layout_id)
       GPUTexture = Data.define(:texture, :view, :sampler)
-      Entry = Struct.new(:version, :resource)
+      Entry = Struct.new(:owner, :version, :resource)
 
       attr_reader :frame
 
@@ -25,11 +25,13 @@ module Stagecraft
         raise DisposedError, "cannot upload disposed geometry" if geometry.disposed?
 
         existing = @geometries[geometry.object_id]
-        return existing.resource if existing&.version == geometry.version
+        if existing&.owner&.equal?(geometry) && existing.version == geometry.version
+          return existing.resource
+        end
 
         schedule_resource(existing.resource) if existing
         resource = upload_geometry(geometry)
-        @geometries[geometry.object_id] = Entry.new(geometry.version, resource)
+        @geometries[geometry.object_id] = Entry.new(geometry, geometry.version, resource)
         register_disposal(geometry)
         resource
       end
@@ -38,18 +40,22 @@ module Stagecraft
         raise DisposedError, "cannot upload disposed texture" if texture.disposed?
 
         existing = @textures[texture.object_id]
-        return existing.resource if existing&.version == texture.version
+        if existing&.owner&.equal?(texture) && existing.version == texture.version
+          return existing.resource
+        end
 
         schedule_resource(existing.resource) if existing
         resource = upload_texture(texture)
-        @textures[texture.object_id] = Entry.new(texture.version, resource)
+        @textures[texture.object_id] = Entry.new(texture, texture.version, resource)
         register_disposal(texture)
         resource
       end
 
       def schedule_dispose(cpu_object)
-        entry = @geometries.delete(cpu_object.object_id) || @textures.delete(cpu_object.object_id)
+        entry = delete_owned_entry(@geometries, cpu_object) ||
+                delete_owned_entry(@textures, cpu_object)
         schedule_resource(entry.resource) if entry
+        @registered.delete(cpu_object.object_id)
         self
       end
 
@@ -67,6 +73,7 @@ module Stagecraft
         @geometries.clear
         @textures.clear
         @dispose_queue.clear
+        @registered.clear
         self
       end
 
@@ -108,7 +115,11 @@ module Stagecraft
         require "texel/wgpu"
         raise Error, "texture has no image" unless texture.image
 
-        gpu_texture = Texel::WGPU.upload(texture.image, device: @device, queue: @queue)
+        image = texture.image
+        if texture.color_space && image.color_space != texture.color_space
+          image = image.dup_with(color_space: texture.color_space)
+        end
+        gpu_texture = Texel::WGPU.upload(image, device: @device, queue: @queue)
         sampler_state = texture.sampler
         sampler = @device.create_sampler(
           address_mode_u: sampler_state.wrap_u,
@@ -131,6 +142,13 @@ module Stagecraft
 
         @registered[object.object_id] = true
         object.on_dispose { |disposed| schedule_dispose(disposed) }
+      end
+
+      def delete_owned_entry(collection, owner)
+        entry = collection[owner.object_id]
+        return unless entry&.owner&.equal?(owner)
+
+        collection.delete(owner.object_id)
       end
 
       def schedule_resource(resource)

@@ -138,11 +138,12 @@ module Stagecraft
           name = ATTRIBUTE_NAMES[semantic]
           next unless name
 
-          format = accessor.vertex_format
+          data, format = attribute_payload(semantic, accessor)
           raise Error, "glTF attribute #{semantic} has no WebGPU vertex format" unless format
 
-          geometry.set_attribute(name, data: accessor.packed, format:, count: accessor.count)
+          geometry.set_attribute(name, data:, format:, count: accessor.count)
         end
+        raise Error, "glTF primitive has no POSITION attribute" unless geometry.attribute(:position)
         if %i[line_loop triangle_fan].include?(primitive.mode)
           geometry.topology = primitive.mode == :line_loop ? :line_list : :triangle_list
           geometry.set_index(data: expanded_indices(primitive), format: :uint32)
@@ -151,6 +152,27 @@ module Stagecraft
           geometry.set_index(data:, format:)
         end
         geometry
+      end
+
+      def attribute_payload(semantic, accessor)
+        return expanded_color(accessor) if semantic == :COLOR_0 &&
+                                           accessor.type == "VEC3" &&
+                                           accessor.vertex_format.nil?
+
+        [accessor.packed, accessor.vertex_format]
+      end
+
+      def expanded_color(accessor)
+        case accessor.component_type
+        when :u8
+          values = accessor.packed.unpack("C*").each_slice(3).flat_map { |color| [*color, 255] }
+          [values.pack("C*"), :unorm8x4]
+        when :u16
+          values = accessor.packed.unpack("S<*").each_slice(3).flat_map { |color| [*color, 65_535] }
+          [values.pack("S<*"), :unorm16x4]
+        else
+          [accessor.packed, accessor.vertex_format]
+        end
       end
 
       def expanded_indices(primitive)

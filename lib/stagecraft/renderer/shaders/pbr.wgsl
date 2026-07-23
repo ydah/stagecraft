@@ -41,7 +41,11 @@ struct VertexInput {
   @location(3) tangent: vec4f,
 //#endif
 //#if HAS_VERTEX_COLOR
+//#if COLOR_VEC3
+  @location(4) color: vec3f,
+//#else
   @location(4) color: vec4f,
+//#endif
 //#endif
 //#if SKINNED
   @location(5) joint: vec4u,
@@ -88,7 +92,11 @@ struct VertexOutput {
   output.uv = vec2f(0.0);
 //#endif
 //#if HAS_VERTEX_COLOR
+//#if COLOR_VEC3
+  output.color = vec4f(input.color, 1.0);
+//#else
   output.color = input.color;
+//#endif
 //#else
   output.color = vec4f(1.0);
 //#endif

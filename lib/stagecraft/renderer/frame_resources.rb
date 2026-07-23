@@ -3,6 +3,7 @@
 module Stagecraft
   class Renderer
     class FrameResources
+      SkinBinding = Struct.new(:skin, :buffer, :bind_group)
       OBJECT_SLOT_SIZE = 256
       OBJECT_DATA_SIZE = 128
       FRAMES_IN_FLIGHT = 3
@@ -24,6 +25,7 @@ module Stagecraft
         @frame_number = 0
         @object_capacity = 1
         @light_capacity = 1
+        @skin_bindings = {}
         create_layouts
         create_buffers
         create_shadow_resources
@@ -45,6 +47,7 @@ module Stagecraft
         ensure_light_capacity(lights.length)
         write_frame(camera:, ambient:, lights:, light_vp:, time:)
         write_objects(items)
+        write_skins(items)
         @frame_number += 1
         self
       end
@@ -52,6 +55,10 @@ module Stagecraft
       def object_offset(index)
         frame_slot = (@frame_number - 1) % FRAMES_IN_FLIGHT
         (frame_slot * @object_capacity * OBJECT_SLOT_SIZE) + (index * OBJECT_SLOT_SIZE)
+      end
+
+      def object_group_for(mesh)
+        mesh.skin ? @skin_bindings.fetch(mesh.object_id).bind_group : object_group
       end
 
       def main_color_attachment
@@ -78,6 +85,11 @@ module Stagecraft
         release_resource(@shadow_sampler, @shadow_view, @shadow_texture)
         [fallback_white, fallback_black, fallback_normal].each { |resource| release_gpu_texture(resource) }
         release_resource(@frame_group, @shadow_frame_group, @object_group, @empty_group)
+        @skin_bindings.each_value do |binding|
+          release_resource(binding.bind_group)
+          destroy_buffer(binding.buffer)
+        end
+        @skin_bindings.clear
         release_resource(@frame_buffer, @lights_buffer, @object_buffer, @joint_buffer)
         release_resource(frame_layout, object_layout, empty_layout, shadow_frame_layout)
       end
@@ -265,6 +277,21 @@ module Stagecraft
             { binding: 1, buffer: @joint_buffer }
           ]
         )
+        @skin_bindings.each_value do |binding|
+          release_resource(binding.bind_group)
+          binding.bind_group = create_object_group(binding.buffer)
+        end
+      end
+
+      def create_object_group(joint_buffer)
+        device.create_bind_group(
+          label: "stagecraft skinned object bind group",
+          layout: object_layout,
+          entries: [
+            { binding: 0, buffer: @object_buffer, size: OBJECT_DATA_SIZE },
+            { binding: 1, buffer: joint_buffer }
+          ]
+        )
       end
 
       def write_frame(camera:, ambient:, lights:, light_vp:, time:)
@@ -316,6 +343,34 @@ module Stagecraft
           frame_slot * @object_capacity * OBJECT_SLOT_SIZE,
           bytes
         )
+      end
+
+      def write_skins(items)
+        items.each do |item|
+          mesh = item.mesh
+          next unless mesh.skin
+
+          binding = @skin_bindings[mesh.object_id]
+          if !binding || !binding.skin.equal?(mesh.skin)
+            if binding
+              release_resource(binding.bind_group)
+              destroy_buffer(binding.buffer)
+            end
+            size = [mesh.skin.joints.length, 1].max * 64
+            buffer = device.create_buffer(
+              label: "stagecraft joint matrices",
+              size:,
+              usage: %i[storage copy_dst]
+            )
+            stats.increment(:buffers)
+            binding = SkinBinding.new(mesh.skin, buffer, create_object_group(buffer))
+            @skin_bindings[mesh.object_id] = binding
+          end
+          matrices = mesh.skin.joint_matrices(mesh)
+          bytes = matrices.empty? ? Larb::Mat4.identity.to_a.pack("e*") :
+                                    matrices.flat_map(&:to_a).pack("e*")
+          queue.write_buffer(binding.buffer, 0, bytes)
+        end
       end
 
       def extent

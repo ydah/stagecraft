@@ -4,15 +4,18 @@ module Stagecraft
   class Geometry
     ATTRIBUTE_NAMES = %i[position normal uv uv1 tangent color joints weights].freeze
 
-    attr_reader :index, :version
+    TOPOLOGIES = %i[point_list line_list line_strip triangle_list triangle_strip].freeze
 
-    def initialize
+    attr_reader :index, :version, :topology
+
+    def initialize(topology: :triangle_list)
       @attributes = {}
       @index = nil
       @version = 0
       @disposed = false
       @dispose_callbacks = []
       @bounding_version = -1
+      self.topology = topology
     end
 
     def set_attribute(name, data:, format:, count:)
@@ -44,6 +47,16 @@ module Stagecraft
       @index = IndexAttribute.new(data:, format:)
       changed!
       self
+    end
+
+    def topology=(value)
+      next_value = value.to_sym
+      raise ArgumentError, "unsupported topology #{value.inspect}" unless TOPOLOGIES.include?(next_value)
+      return next_value if @topology == next_value
+
+      @topology = next_value
+      changed!
+      next_value
     end
 
     def bounding_box

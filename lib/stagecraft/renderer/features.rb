@@ -31,10 +31,16 @@ module Stagecraft
       end
 
       def vertex_layout_id(geometry)
-        geometry.attributes.sort_by(&:first).map { |name, attribute| [name, attribute.format] }.hash
+        [
+          geometry.topology,
+          geometry.index&.format,
+          geometry.attributes.sort_by(&:first).map { |name, attribute| [name, attribute.format] }
+        ].hash
       end
 
       def material_features(material, values)
+        values << :ALPHA_MASK if material.alpha_mode == :mask
+        values << :DOUBLE_SIDED if material.side == :double
         return unless material.is_a?(Materials::PBR)
 
         values << :HAS_BASECOLOR_MAP if material.base_color_map
@@ -42,8 +48,6 @@ module Stagecraft
         values << :HAS_NORMAL_MAP if material.normal_map
         values << :HAS_OCCLUSION_MAP if material.occlusion_map
         values << :HAS_EMISSIVE_MAP if material.emissive_map
-        values << :ALPHA_MASK if material.alpha_mode == :mask
-        values << :DOUBLE_SIDED if material.side == :double
       end
       private_class_method :material_features
     end

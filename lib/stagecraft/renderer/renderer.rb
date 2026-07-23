@@ -210,7 +210,11 @@ module Stagecraft
       else
         pass.set_bind_group(1, @pipelines.material_binding(item.mesh.material, item.features))
       end
-      pass.set_bind_group(2, @resources.object_group, dynamic_offsets: [@resources.object_offset(index)])
+      pass.set_bind_group(
+        2,
+        @resources.object_group_for(item.mesh),
+        dynamic_offsets: [@resources.object_offset(index)]
+      )
       bind_vertex_buffers(pass, item.mesh.geometry, geometry, item.mesh.material, shadow:)
       if geometry.index_buffer
         pass.set_index_buffer(geometry.index_buffer, geometry.index_format)
@@ -225,7 +229,7 @@ module Stagecraft
       names = if shadow
                 %i[position joints weights]
               elsif material.is_a?(Materials::Unlit)
-                %i[position uv]
+                %i[position uv joints weights]
               else
                 PipelineFactory::ATTRIBUTE_LOCATIONS.keys
               end
@@ -241,7 +245,12 @@ module Stagecraft
     def track_draw(geometry)
       stats.increment(:draw_calls)
       count = geometry.index&.count || geometry.attribute(:position).count
-      stats.increment(:triangles, count / 3)
+      triangles = case geometry.topology
+                  when :triangle_list then count / 3
+                  when :triangle_strip then [count - 2, 0].max
+                  else 0
+                  end
+      stats.increment(:triangles, triangles)
     end
 
     def create_post_resources

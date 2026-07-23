@@ -10,6 +10,11 @@ struct MaterialUniforms {
   emissive_map_flag: u32,
   alpha_cutoff: f32,
   _padding: vec2f,
+  base_color_uv_transform: mat3x3f,
+  mr_uv_transform: mat3x3f,
+  normal_uv_transform: mat3x3f,
+  occlusion_uv_transform: mat3x3f,
+  emissive_uv_transform: mat3x3f,
 };
 
 @group(1) @binding(0) var<uniform> material: MaterialUniforms;
@@ -62,7 +67,11 @@ struct VertexOutput {
   output.position = frame.view_proj * world;
   output.world_position = world.xyz;
 //#if HAS_NORMAL
-  output.normal = normalize((object.normal_matrix * vec4f(input.normal, 0.0)).xyz);
+  var local_normal = input.normal;
+//#if SKINNED
+  local_normal = (skin * vec4f(local_normal, 0.0)).xyz;
+//#endif
+  output.normal = normalize((object.normal_matrix * vec4f(local_normal, 0.0)).xyz);
 //#else
   output.normal = vec3f(0.0, 1.0, 0.0);
 //#endif
@@ -99,7 +108,8 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3f) -> vec3f {
 @fragment fn fs_main(input: VertexOutput) -> @location(0) vec4f {
   var base = material.base_color * input.color;
   if (material.texture_flags.x != 0u) {
-    base *= textureSample(base_color_map, material_sampler, input.uv);
+    let uv = (material.base_color_uv_transform * vec3f(input.uv, 1.0)).xy;
+    base *= textureSample(base_color_map, material_sampler, uv);
   }
 //#if ALPHA_MASK
   if (base.a < material.alpha_cutoff) { discard; }
@@ -107,13 +117,15 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3f) -> vec3f {
   var metallic = material.factors.x;
   var roughness = max(material.factors.y, 0.04);
   if (material.texture_flags.y != 0u) {
-    let mr = textureSample(mr_map, material_sampler, input.uv);
+    let uv = (material.mr_uv_transform * vec3f(input.uv, 1.0)).xy;
+    let mr = textureSample(mr_map, material_sampler, uv);
     metallic *= mr.b;
     roughness *= mr.g;
   }
   var normal = normalize(input.normal);
   if (material.texture_flags.z != 0u) {
-    let mapped = textureSample(normal_map, material_sampler, input.uv).xyz * 2.0 - 1.0;
+    let uv = (material.normal_uv_transform * vec3f(input.uv, 1.0)).xy;
+    let mapped = textureSample(normal_map, material_sampler, uv).xyz * 2.0 - 1.0;
     normal = normalize(normal + mapped * material.factors.z);
   }
   let view_direction = normalize(frame.camera_pos - input.world_position);
@@ -155,10 +167,12 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3f) -> vec3f {
   }
   var emissive = material.emissive.rgb * material.emissive.a;
   if (material.emissive_map_flag != 0u) {
-    emissive *= textureSample(emissive_map, material_sampler, input.uv).rgb;
+    let uv = (material.emissive_uv_transform * vec3f(input.uv, 1.0)).xy;
+    emissive *= textureSample(emissive_map, material_sampler, uv).rgb;
   }
   if (material.texture_flags.w != 0u) {
-    result *= mix(1.0, textureSample(occlusion_map, material_sampler, input.uv).r,
+    let uv = (material.occlusion_uv_transform * vec3f(input.uv, 1.0)).xy;
+    result *= mix(1.0, textureSample(occlusion_map, material_sampler, uv).r,
                   material.factors.w);
   }
   return vec4f(result + emissive, base.a);

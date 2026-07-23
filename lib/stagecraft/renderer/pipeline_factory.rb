@@ -9,7 +9,10 @@ module Stagecraft
       }.freeze
       FORMAT_SIZES = {
         float32: 4, float32x2: 8, float32x3: 12, float32x4: 16,
+        sint8x2: 2, sint8x4: 4, snorm8x2: 2, snorm8x4: 4,
+        sint16x2: 4, sint16x4: 8, snorm16x2: 4, snorm16x4: 8,
         uint16: 2, uint16x2: 4, uint16x4: 8,
+        unorm16x2: 4, unorm16x4: 8,
         uint32: 4, uint32x2: 8, uint32x3: 12, uint32x4: 16,
         unorm8x2: 2, unorm8x4: 4, uint8x2: 2, uint8x4: 4
       }.freeze
@@ -152,6 +155,9 @@ module Stagecraft
           },
           multisample: { count: shadow ? 1 : @sample_count }
         }
+        if %i[triangle_strip line_strip].include?(item.mesh.geometry.topology) && item.mesh.geometry.index
+          descriptor[:primitive][:strip_index_format] = item.mesh.geometry.index.format
+        end
         unless shadow
           descriptor[:fragment] = {
             module: shader,
@@ -207,7 +213,7 @@ module Stagecraft
       end
 
       def material_layout_entries(material)
-        base = [{ binding: 0, visibility: :fragment, buffer: { type: :uniform } }]
+        base = [{ binding: 0, visibility: %i[vertex fragment], buffer: { type: :uniform } }]
         case material
         when Materials::PBR
           base << { binding: 1, visibility: :fragment, sampler: { type: :filtering } }
@@ -243,7 +249,9 @@ module Stagecraft
           material.occlusion_map,
           material.emissive_map
         ]
-        bytes = material.base_color.to_a.pack("e*")
+        color = material.base_color.to_a
+        color[3] *= material.opacity
+        bytes = color.pack("e*")
         bytes << [material.metallic, material.roughness, material.normal_scale,
                   material.occlusion_strength].pack("e*")
         bytes << [*material.emissive.to_a.first(3), material.emissive_strength].pack("e*")
@@ -251,6 +259,9 @@ module Stagecraft
         bytes << [maps[4] ? 1 : 0].pack("L<")
         bytes << [material.alpha_cutoff].pack("e")
         bytes << "\0".b * 8
+        Materials::PBR::TRANSFORM_ATTRIBUTES.each do |name|
+          bytes << pack_mat3(material.public_send(name))
+        end
         fallbacks = [
           @resources.fallback_white,
           @resources.fallback_white,
@@ -262,10 +273,13 @@ module Stagecraft
       end
 
       def unlit_bytes_and_textures(material)
-        bytes = material.color.to_a.pack("e*")
+        color = material.color.to_a
+        color[3] *= material.opacity
+        bytes = color.pack("e*")
         bytes << [material.map ? 1 : 0].pack("L<")
         bytes << [material.alpha_cutoff].pack("e")
         bytes << "\0".b * 8
+        bytes << pack_mat3(material.uv_transform)
         [bytes, resolve_textures([material.map], [@resources.fallback_white])]
       end
 
@@ -309,7 +323,7 @@ module Stagecraft
         names = if shadow
                   %i[position joints weights]
                 elsif material.is_a?(Materials::Unlit)
-                  %i[position uv]
+                  %i[position uv joints weights]
                 else
                   ATTRIBUTE_LOCATIONS.keys
                 end
@@ -329,8 +343,15 @@ module Stagecraft
         end
       end
 
-      def topology(_geometry)
-        :triangle_list
+      def topology(geometry)
+        geometry.topology
+      end
+
+      def pack_mat3(matrix)
+        values = matrix.to_a
+        [values[0], values[1], values[2], 0.0,
+         values[3], values[4], values[5], 0.0,
+         values[6], values[7], values[8], 0.0].pack("e*")
       end
 
       def cull_mode(material)

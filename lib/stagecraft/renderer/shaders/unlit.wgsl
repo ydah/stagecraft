@@ -21,6 +21,13 @@ struct VertexInput {
 //#if HAS_UV1
   @location(7) uv1: vec2f,
 //#endif
+//#if HAS_VERTEX_COLOR
+//#if COLOR_VEC3
+  @location(4) color: vec3f,
+//#else
+  @location(4) color: vec4f,
+//#endif
+//#endif
 //#if SKINNED
   @location(5) joint: vec4u,
   @location(6) weight: vec4f,
@@ -31,6 +38,7 @@ struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) uv: vec2f,
   @location(1) uv1: vec2f,
+  @location(2) color: vec4f,
 };
 
 @vertex fn vs_main(input: VertexInput) -> VertexOutput {
@@ -55,11 +63,20 @@ struct VertexOutput {
 //#else
   output.uv1 = output.uv;
 //#endif
+//#if HAS_VERTEX_COLOR
+//#if COLOR_VEC3
+  output.color = vec4f(input.color, 1.0);
+//#else
+  output.color = input.color;
+//#endif
+//#else
+  output.color = vec4f(1.0);
+//#endif
   return output;
 }
 
 @fragment fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-  var color = material.color;
+  var color = material.color * input.color;
   if (material.use_map != 0u) {
     let source_uv = select(input.uv, input.uv1, material.uv_set != 0u);
     let uv = (material.uv_transform * vec3f(source_uv, 1.0)).xy;

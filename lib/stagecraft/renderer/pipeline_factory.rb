@@ -3,7 +3,10 @@
 module Stagecraft
   class Renderer
     class PipelineFactory
-      MaterialBinding = Struct.new(:version, :texture_versions, :buffer, :bind_group, :signature)
+      MaterialBinding = Struct.new(
+        :owner, :version, :texture_versions, :value_signature,
+        :buffer, :bind_group, :signature
+      )
       ATTRIBUTE_LOCATIONS = {
         position: 0, normal: 1, uv: 2, tangent: 3, color: 4, joints: 5, weights: 6,
         uv1: 7
@@ -50,16 +53,24 @@ module Stagecraft
       def material_binding(material, features)
         signature = material_layout_signature(material)
         key = [material.object_id, signature]
-        texture_versions = material_textures(material).map { |texture| [texture.object_id, texture.version] }
+        purge_obsolete_material_bindings(material, key)
+        texture_versions = material_texture_versions(material)
+        value_signature = material_value_signature(material)
         existing = @material_bindings[key]
-        if existing&.version == material.version && existing.texture_versions == texture_versions
+        if existing&.owner&.equal?(material) &&
+           existing.version == material.version &&
+           existing.texture_versions == texture_versions &&
+           existing.value_signature == value_signature
           return existing.bind_group
         end
 
         bytes, textures = material_bytes_and_textures(material)
-        if existing && existing.buffer.size == bytes.bytesize && existing.texture_versions == texture_versions
+        if existing&.owner&.equal?(material) &&
+           existing.buffer.size == bytes.bytesize &&
+           existing.texture_versions == texture_versions
           @queue.write_buffer(existing.buffer, 0, bytes)
           existing.version = material.version
+          existing.value_signature = value_signature
           return existing.bind_group
         end
 
@@ -76,7 +87,8 @@ module Stagecraft
           entries: material_entries(buffer, textures, material)
         )
         @material_bindings[key] = MaterialBinding.new(
-          material.version, texture_versions, buffer, bind_group, signature
+          material, material.version, texture_versions, value_signature,
+          buffer, bind_group, signature
         )
         bind_group
       end
@@ -325,16 +337,43 @@ module Stagecraft
         entries
       end
 
-      def material_textures(material)
+      def material_texture_versions(material)
         case material
         when Materials::PBR
-          Materials::PBR::TEXTURE_ATTRIBUTES.filter_map { |name| material.public_send(name) }
+          Materials::PBR::TEXTURE_ATTRIBUTES.map do |name|
+            texture_version(name, material.public_send(name))
+          end
         when Materials::Unlit
-          [material.map].compact
+          [texture_version(:map, material.map)]
         when Materials::Shader
-          UniformPacker.new.pack(material.uniforms).textures.map(&:last)
+          UniformPacker.new.pack(material.uniforms).textures.map do |name, texture|
+            texture_version(name, texture)
+          end
         else
           []
+        end
+      end
+
+      def texture_version(name, texture)
+        [name, texture&.object_id, texture&.version]
+      end
+
+      def material_value_signature(material)
+        return unless material.is_a?(Materials::Shader)
+
+        material.uniforms.map do |name, value|
+          next [name, :texture] if value.is_a?(Textures::Texture)
+
+          normalized = value.respond_to?(:to_a) ? value.to_a : value
+          [name, normalized]
+        end
+      end
+
+      def purge_obsolete_material_bindings(material, current_key)
+        @material_bindings.keys.each do |key|
+          next unless key.first == material.object_id && key != current_key
+
+          release_material_binding(@material_bindings.delete(key))
         end
       end
 
@@ -342,7 +381,7 @@ module Stagecraft
         names = if shadow
                   %i[position joints weights]
                 elsif material.is_a?(Materials::Unlit)
-                  %i[position uv uv1 joints weights]
+                  %i[position uv uv1 color joints weights]
                 else
                   ATTRIBUTE_LOCATIONS.keys
                 end

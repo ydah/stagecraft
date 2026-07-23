@@ -27,10 +27,13 @@ RSpec.describe Stagecraft::Renderer::Features do
     features = described_class.for(mesh)
 
     source = Stagecraft::Renderer::Shaders.compose("pbr.wgsl", defines: features)
+    unlit = Stagecraft::Renderer::Shaders.compose("unlit.wgsl", defines: features)
 
     expect(features).to include(:HAS_VERTEX_COLOR, :COLOR_VEC3, :HAS_UV1)
     expect(source).to include("@location(4) color: vec3f")
     expect(source).to include("output.color = vec4f(input.color, 1.0)")
     expect(source).to include("@location(7) uv1: vec2f")
+    expect(unlit).to include("@location(4) color: vec3f")
+    expect(unlit).to include("material.color * input.color")
   end
 end

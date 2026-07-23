@@ -115,7 +115,11 @@ struct VertexOutput {
   output.color = vec4f(1.0);
 //#endif
 //#if HAS_TANGENT
-  let world_tangent = normalize((object.model * vec4f(input.tangent.xyz, 0.0)).xyz);
+  var local_tangent = input.tangent.xyz;
+//#if SKINNED
+  local_tangent = (skin * vec4f(local_tangent, 0.0)).xyz;
+//#endif
+  let world_tangent = normalize((object.model * vec4f(local_tangent, 0.0)).xyz);
   output.tangent = vec4f(world_tangent, input.tangent.w);
 //#endif
   return output;

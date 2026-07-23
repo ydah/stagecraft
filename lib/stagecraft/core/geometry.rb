@@ -124,9 +124,21 @@ module Stagecraft
     end
 
     def triangle_indices
-      return (0...position_values.length).to_a unless index
+      values = if index
+                 index.data.unpack(index.format == :uint16 ? "S<*" : "L<*")
+               else
+                 (0...position_values.length).to_a
+               end
+      return values if topology == :triangle_list
+      unless topology == :triangle_strip
+        raise Error, "normal computation requires triangle geometry, got #{topology}"
+      end
+      return [] if values.length < 3
 
-      index.data.unpack(index.format == :uint16 ? "S<*" : "L<*")
+      (0..(values.length - 3)).flat_map do |offset|
+        a, b, c = values.slice(offset, 3)
+        offset.odd? ? [b, a, c] : [a, b, c]
+      end
     end
 
     def refresh_bounds!

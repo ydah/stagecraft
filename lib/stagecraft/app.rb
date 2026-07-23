@@ -8,6 +8,9 @@ module Stagecraft
                    window: :sdl3, renderer: nil, resizable: true)
       @window = build_window(window, title:, width:, height:, resizable:)
       @renderer = renderer || Renderer.new(window: @window, width:, height:, msaa:)
+    rescue StandardError
+      @window&.close
+      raise
     end
 
     def aspect
@@ -31,8 +34,11 @@ module Stagecraft
       end
       self
     ensure
-      renderer.dispose
-      window.close
+      begin
+        renderer.dispose
+      ensure
+        window.close
+      end
     end
 
     private

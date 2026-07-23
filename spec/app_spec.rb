@@ -38,4 +38,22 @@ RSpec.describe Stagecraft::App do
     expect(window.closed).to be(true)
     expect(renderer.disposed).to be(true)
   end
+
+  it "closes the window if renderer construction fails" do
+    window = FakeWindow.new(false, 0)
+    allow(Stagecraft::Renderer).to receive(:new).and_raise(Stagecraft::Error, "device failed")
+
+    expect { described_class.new(window:) }.to raise_error(Stagecraft::Error, "device failed")
+    expect(window.closed).to be(true)
+  end
+
+  it "closes the window even when renderer disposal fails" do
+    window = FakeWindow.new(false, 0)
+    renderer = Object.new
+    renderer.define_singleton_method(:dispose) { raise Stagecraft::Error, "dispose failed" }
+    app = described_class.new(window:, renderer:)
+
+    expect { app.run { nil } }.to raise_error(Stagecraft::Error, "dispose failed")
+    expect(window.closed).to be(true)
+  end
 end

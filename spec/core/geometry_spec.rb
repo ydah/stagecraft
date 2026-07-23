@@ -29,6 +29,38 @@ RSpec.describe Stagecraft::Geometry do
     expect(values.each_slice(3).to_a).to all(eq([0.0, 0.0, 1.0]))
   end
 
+  it "computes normals for alternating triangle-strip winding" do
+    strip = described_class.new(topology: :triangle_strip)
+                           .set_attribute(
+                             :position,
+                             data: [
+                               -1, -1, 0,
+                               -1, 1, 0,
+                               1, -1, 0,
+                               1, 1, 0
+                             ].pack("e*"),
+                             format: :float32x3,
+                             count: 4
+                           )
+
+    strip.compute_normals!
+
+    normals = strip.attribute(:normal).data.unpack("e*").each_slice(3).to_a
+    expect(normals).to all(eq([0.0, 0.0, -1.0]))
+  end
+
+  it "rejects normal computation for non-triangle topology" do
+    points = described_class.new(topology: :point_list)
+                            .set_attribute(
+                              :position,
+                              data: [0, 0, 0].pack("e*"),
+                              format: :float32x3,
+                              count: 1
+                            )
+
+    expect { points.compute_normals! }.to raise_error(Stagecraft::Error, /triangle geometry/)
+  end
+
   it "invalidates the geometry when attribute storage changes" do
     version = geometry.version
 

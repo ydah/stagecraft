@@ -1,28 +1,8 @@
 # frozen_string_literal: true
 
 RSpec.describe Stagecraft::Renderer do
-  class RecordingBackend
-    attr_reader :commands
-
-    def initialize
-      @commands = []
-    end
-
-    def begin_frame(camera:)
-      commands << [:begin_frame, camera]
-    end
-
-    def draw(**payload)
-      commands << [:draw, payload]
-    end
-
-    def end_frame
-      commands << [:end_frame]
-    end
-  end
-
   it "records sorted draw commands without a GPU" do
-    backend = RecordingBackend.new
+    backend = SpecSupport::RecordingBackend.new
     renderer = described_class.new(width: 32, height: 32, backend:)
     scene = Stagecraft::Scene.new
     mesh = Stagecraft::Mesh.new(
@@ -43,7 +23,7 @@ RSpec.describe Stagecraft::Renderer do
   end
 
   it "rejects use after disposal" do
-    renderer = described_class.new(backend: RecordingBackend.new)
+    renderer = described_class.new(backend: SpecSupport::RecordingBackend.new)
     renderer.dispose
 
     expect { renderer.render(Stagecraft::Scene.new, Stagecraft::Cameras::Perspective.new) }

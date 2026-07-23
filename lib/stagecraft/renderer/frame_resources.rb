@@ -5,7 +5,7 @@ module Stagecraft
     class FrameResources
       SkinBinding = Struct.new(:skin, :buffer, :bind_group)
       OBJECT_SLOT_SIZE = 256
-      OBJECT_DATA_SIZE = 128
+      OBJECT_DATA_SIZE = 144
       FRAMES_IN_FLIGHT = 3
       LIGHT_SIZE = 80
 
@@ -61,6 +61,18 @@ module Stagecraft
         mesh.skin ? @skin_bindings.fetch(mesh.object_id).bind_group : object_group
       end
 
+      def resize_shadow(map_size)
+        next_size = Integer(map_size)
+        return self if next_size == @shadow_size
+
+        release_resource(@shadow_view)
+        @shadow_texture.destroy if @shadow_texture.respond_to?(:destroy)
+        @shadow_texture.release if @shadow_texture.respond_to?(:release)
+        create_shadow_texture(next_size)
+        recreate_frame_groups
+        self
+      end
+
       def main_color_attachment
         if sample_count > 1
           {
@@ -114,7 +126,7 @@ module Stagecraft
           entries: [
             {
               binding: 0,
-              visibility: :vertex,
+              visibility: %i[vertex fragment],
               buffer: { type: :uniform, has_dynamic_offset: true, min_binding_size: OBJECT_DATA_SIZE }
             },
             { binding: 1, visibility: :vertex, buffer: { type: :read_only_storage } }
@@ -139,19 +151,24 @@ module Stagecraft
       end
 
       def create_shadow_resources
-        @shadow_texture = device.create_texture(
-          label: "stagecraft shadow map",
-          size: { width: 2_048, height: 2_048, depth_or_array_layers: 1 },
-          format: :depth32_float,
-          usage: %i[render_attachment texture_binding]
-        )
-        @shadow_view = shadow_texture.create_view
+        create_shadow_texture(2_048)
         @shadow_sampler = device.create_sampler(
           compare: :less_equal,
           mag_filter: :linear,
           min_filter: :linear
         )
         recreate_frame_groups
+      end
+
+      def create_shadow_texture(size)
+        @shadow_size = Integer(size)
+        @shadow_texture = device.create_texture(
+          label: "stagecraft shadow map",
+          size: { width: @shadow_size, height: @shadow_size, depth_or_array_layers: 1 },
+          format: :depth32_float,
+          usage: %i[render_attachment texture_binding]
+        )
+        @shadow_view = shadow_texture.create_view
       end
 
       def create_fallback_textures
@@ -330,13 +347,15 @@ module Stagecraft
         frame_slot = @frame_number % FRAMES_IN_FLIGHT
         bytes = "\0".b * (@object_capacity * OBJECT_SLOT_SIZE)
         items.each_with_index do |item, index|
-          model = item.mesh.world_matrix
-          normal = model.inverse.transpose
           offset = index * OBJECT_SLOT_SIZE
+          model = item.mesh.world_matrix
           bytes[offset, 64] = model.to_a.pack("e*")
+          normal = model.inverse.transpose
           bytes[offset + 64, 64] = normal.to_a.pack("e*")
         rescue StandardError
           bytes[offset + 64, 64] = Larb::Mat4.identity.to_a.pack("e*")
+        ensure
+          bytes[offset + 128, 4] = [item.mesh.receive_shadow ? 1 : 0].pack("L<")
         end
         queue.write_buffer(
           @object_buffer,

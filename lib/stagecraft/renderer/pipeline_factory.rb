@@ -216,8 +216,15 @@ module Stagecraft
         base = [{ binding: 0, visibility: %i[vertex fragment], buffer: { type: :uniform } }]
         case material
         when Materials::PBR
-          base << { binding: 1, visibility: :fragment, sampler: { type: :filtering } }
-          (2..6).each { |binding| base << { binding:, visibility: :fragment, texture: { sample_type: :float } } }
+          5.times do |index|
+            binding = 1 + (index * 2)
+            base << { binding:, visibility: :fragment, sampler: { type: :filtering } }
+            base << {
+              binding: binding + 1,
+              visibility: :fragment,
+              texture: { sample_type: :float }
+            }
+          end
         when Materials::Unlit
           base << { binding: 1, visibility: :fragment, sampler: { type: :filtering } }
           base << { binding: 2, visibility: :fragment, texture: { sample_type: :float } }
@@ -293,7 +300,13 @@ module Stagecraft
         entries = [{ binding: 0, buffer: }]
         return entries if textures.empty?
 
-        if material.is_a?(Materials::PBR) || material.is_a?(Materials::Unlit)
+        if material.is_a?(Materials::PBR)
+          textures.each_with_index do |texture, index|
+            binding = 1 + (index * 2)
+            entries << { binding:, sampler: texture.sampler }
+            entries << { binding: binding + 1, texture_view: texture.view }
+          end
+        elsif material.is_a?(Materials::Unlit)
           entries << { binding: 1, sampler: textures.first.sampler }
           textures.each_with_index { |texture, index| entries << { binding: index + 2, texture_view: texture.view } }
         else

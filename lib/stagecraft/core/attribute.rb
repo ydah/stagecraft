@@ -33,11 +33,12 @@ module Stagecraft
     def data=(value)
       raise ArgumentError, "attribute data must be a packed String" unless value.is_a?(String)
 
-      @data = value.b.freeze
+      next_data = value.b.freeze
       expected_size = count * byte_stride
-      unless @data.bytesize == expected_size
-        raise ArgumentError, "attribute data must contain #{expected_size} bytes, got #{@data.bytesize}"
+      unless next_data.bytesize == expected_size
+        raise ArgumentError, "attribute data must contain #{expected_size} bytes, got #{next_data.bytesize}"
       end
+      @data = next_data
       @version += 1
       @on_change&.call if @initialized
     end
@@ -77,10 +78,11 @@ module Stagecraft
     def data=(value)
       raise ArgumentError, "index data must be a packed String" unless value.is_a?(String)
 
-      @data = value.b.freeze
+      next_data = value.b.freeze
       width = format == :uint16 ? 2 : 4
-      raise ArgumentError, "index data is not aligned to #{width} bytes" unless (@data.bytesize % width).zero?
+      raise ArgumentError, "index data is not aligned to #{width} bytes" unless (next_data.bytesize % width).zero?
 
+      @data = next_data
       @count = @data.bytesize / width
       @version += 1
       @on_change&.call if @initialized

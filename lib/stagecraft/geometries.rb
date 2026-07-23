@@ -4,7 +4,11 @@ module Stagecraft
   module Geometries
     module_function
 
-    def box(width = 1.0, height = 1.0, depth = 1.0)
+    def box(width = 1.0, height = 1.0, depth = 1.0, **dimensions)
+      width = dimensions.delete(:width) || width
+      height = dimensions.delete(:height) || height
+      depth = dimensions.delete(:depth) || depth
+      reject_unknown_options!(dimensions)
       half = [width, height, depth].map { |value| Float(value) / 2.0 }
       faces = [
         [[1, 0, 0], [[half[0], -half[1], half[2]], [half[0], -half[1], -half[2]], [half[0], half[1], -half[2]], [half[0], half[1], half[2]]]],
@@ -28,7 +32,10 @@ module Stagecraft
       build(positions, normals, uvs, indices)
     end
 
-    def plane(width = 1.0, height = 1.0, width_segments: 1, height_segments: 1)
+    def plane(width = 1.0, height = 1.0, width_segments: 1, height_segments: 1, **dimensions)
+      width = dimensions.delete(:width) || width
+      height = dimensions.delete(:height) || height
+      reject_unknown_options!(dimensions)
       grid(
         u_segments: width_segments, v_segments: height_segments,
         point: ->(u, v) { [(u - 0.5) * width, (0.5 - v) * height, 0.0] },
@@ -36,7 +43,9 @@ module Stagecraft
       )
     end
 
-    def sphere(radius = 1.0, width_segments: 32, height_segments: 16)
+    def sphere(radius = 1.0, width_segments: 32, height_segments: 16, **dimensions)
+      radius = dimensions.delete(:radius) || radius
+      reject_unknown_options!(dimensions)
       radius = Float(radius)
       grid(
         u_segments: [Integer(width_segments), 3].max,
@@ -56,7 +65,11 @@ module Stagecraft
     end
 
     def cylinder(radius_top = 1.0, radius_bottom = 1.0, height = 1.0,
-                 radial_segments: 32, height_segments: 1, open_ended: false)
+                 radial_segments: 32, height_segments: 1, open_ended: false, **dimensions)
+      radius_top = dimensions.delete(:radius_top) || radius_top
+      radius_bottom = dimensions.delete(:radius_bottom) || radius_bottom
+      height = dimensions.delete(:height) || height
+      reject_unknown_options!(dimensions)
       radial = [Integer(radial_segments), 3].max
       vertical = [Integer(height_segments), 1].max
       slope = (radius_bottom - radius_top) / height.to_f
@@ -75,11 +88,17 @@ module Stagecraft
       )
       return side if open_ended
 
-      merge_geometries(side, disc(radius_top, height / 2.0, radial, up: true),
-                       disc(radius_bottom, -height / 2.0, radial, up: false))
+      caps = []
+      caps << disc(radius_top, height / 2.0, radial, up: true) unless radius_top.to_f.zero?
+      caps << disc(radius_bottom, -height / 2.0, radial, up: false) unless radius_bottom.to_f.zero?
+      merge_geometries(side, *caps)
     end
 
-    def torus(radius = 1.0, tube = 0.4, radial_segments: 12, tubular_segments: 48, arc: Math::PI * 2.0)
+    def torus(radius = 1.0, tube = 0.4, radial_segments: 12, tubular_segments: 48,
+              arc: Math::PI * 2.0, **dimensions)
+      radius = dimensions.delete(:radius) || radius
+      tube = dimensions.delete(:tube) || tube
+      reject_unknown_options!(dimensions)
       grid(
         u_segments: [Integer(tubular_segments), 3].max,
         v_segments: [Integer(radial_segments), 3].max,
@@ -170,5 +189,12 @@ module Stagecraft
       build(positions, normals, uvs, indices)
     end
     private_class_method :merge_geometries
+
+    def reject_unknown_options!(options)
+      return if options.empty?
+
+      raise ArgumentError, "unknown geometry options: #{options.keys.join(", ")}"
+    end
+    private_class_method :reject_unknown_options!
   end
 end

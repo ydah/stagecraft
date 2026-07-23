@@ -47,6 +47,7 @@ module Stagecraft
       end
 
       light, light_vp = shadow_light_and_matrix(list)
+      @resources.resize_shadow(light.shadow.map_size) if light
       ordered_items = list.items
       @resources.begin_frame(
         ordered_items,

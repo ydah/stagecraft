@@ -18,12 +18,16 @@ struct MaterialUniforms {
 };
 
 @group(1) @binding(0) var<uniform> material: MaterialUniforms;
-@group(1) @binding(1) var material_sampler: sampler;
+@group(1) @binding(1) var base_color_sampler: sampler;
 @group(1) @binding(2) var base_color_map: texture_2d<f32>;
-@group(1) @binding(3) var mr_map: texture_2d<f32>;
-@group(1) @binding(4) var normal_map: texture_2d<f32>;
-@group(1) @binding(5) var occlusion_map: texture_2d<f32>;
-@group(1) @binding(6) var emissive_map: texture_2d<f32>;
+@group(1) @binding(3) var mr_sampler: sampler;
+@group(1) @binding(4) var mr_map: texture_2d<f32>;
+@group(1) @binding(5) var normal_sampler: sampler;
+@group(1) @binding(6) var normal_map: texture_2d<f32>;
+@group(1) @binding(7) var occlusion_sampler: sampler;
+@group(1) @binding(8) var occlusion_map: texture_2d<f32>;
+@group(1) @binding(9) var emissive_sampler: sampler;
+@group(1) @binding(10) var emissive_map: texture_2d<f32>;
 
 struct VertexInput {
   @location(0) position: vec3f,
@@ -51,6 +55,9 @@ struct VertexOutput {
   @location(1) normal: vec3f,
   @location(2) uv: vec2f,
   @location(3) color: vec4f,
+//#if HAS_TANGENT
+  @location(4) tangent: vec4f,
+//#endif
 };
 
 @vertex fn vs_main(input: VertexInput) -> VertexOutput {
@@ -85,6 +92,10 @@ struct VertexOutput {
 //#else
   output.color = vec4f(1.0);
 //#endif
+//#if HAS_TANGENT
+  let world_tangent = normalize((object.model * vec4f(input.tangent.xyz, 0.0)).xyz);
+  output.tangent = vec4f(world_tangent, input.tangent.w);
+//#endif
   return output;
 }
 
@@ -105,11 +116,14 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3f) -> vec3f {
   return f0 + (vec3f(1.0) - f0) * pow(1.0 - cos_theta, 5.0);
 }
 
-@fragment fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+@fragment fn fs_main(
+  input: VertexOutput,
+  @builtin(front_facing) front_facing: bool
+) -> @location(0) vec4f {
   var base = material.base_color * input.color;
   if (material.texture_flags.x != 0u) {
     let uv = (material.base_color_uv_transform * vec3f(input.uv, 1.0)).xy;
-    base *= textureSample(base_color_map, material_sampler, uv);
+    base *= textureSample(base_color_map, base_color_sampler, uv);
   }
 //#if ALPHA_MASK
   if (base.a < material.alpha_cutoff) { discard; }
@@ -118,15 +132,24 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3f) -> vec3f {
   var roughness = max(material.factors.y, 0.04);
   if (material.texture_flags.y != 0u) {
     let uv = (material.mr_uv_transform * vec3f(input.uv, 1.0)).xy;
-    let mr = textureSample(mr_map, material_sampler, uv);
+    let mr = textureSample(mr_map, mr_sampler, uv);
     metallic *= mr.b;
     roughness *= mr.g;
   }
   var normal = normalize(input.normal);
+//#if DOUBLE_SIDED
+  normal *= select(-1.0, 1.0, front_facing);
+//#endif
   if (material.texture_flags.z != 0u) {
     let uv = (material.normal_uv_transform * vec3f(input.uv, 1.0)).xy;
-    let mapped = textureSample(normal_map, material_sampler, uv).xyz * 2.0 - 1.0;
-    normal = normalize(normal + mapped * material.factors.z);
+    var mapped = textureSample(normal_map, normal_sampler, uv).xyz * 2.0 - 1.0;
+    mapped = vec3f(mapped.xy * material.factors.z, mapped.z);
+//#if HAS_TANGENT
+    let bitangent = normalize(cross(normal, input.tangent.xyz)) * input.tangent.w;
+    normal = normalize(mat3x3f(input.tangent.xyz, bitangent, normal) * mapped);
+//#else
+    normal = normalize(normal + mapped);
+//#endif
   }
   let view_direction = normalize(frame.camera_pos - input.world_position);
   let f0 = mix(vec3f(0.04), base.rgb, metallic);
@@ -160,7 +183,7 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3f) -> vec3f {
                    max(4.0 * n_dot_v * n_dot_l, 0.0001);
     let diffuse = (vec3f(1.0) - fresnel) * (1.0 - metallic) * base.rgb / PI;
     var visibility = 1.0;
-    if (light.kind == 0u && index == 0u) {
+    if (light.kind == 0u && index == 0u && object.receive_shadow != 0u) {
       visibility = shadow_visibility(input.world_position);
     }
     result += (diffuse + specular) * light.color * n_dot_l * attenuation * visibility;
@@ -168,11 +191,11 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3f) -> vec3f {
   var emissive = material.emissive.rgb * material.emissive.a;
   if (material.emissive_map_flag != 0u) {
     let uv = (material.emissive_uv_transform * vec3f(input.uv, 1.0)).xy;
-    emissive *= textureSample(emissive_map, material_sampler, uv).rgb;
+    emissive *= textureSample(emissive_map, emissive_sampler, uv).rgb;
   }
   if (material.texture_flags.w != 0u) {
     let uv = (material.occlusion_uv_transform * vec3f(input.uv, 1.0)).xy;
-    result *= mix(1.0, textureSample(occlusion_map, material_sampler, uv).r,
+    result *= mix(1.0, textureSample(occlusion_map, occlusion_sampler, uv).r,
                   material.factors.w);
   }
   return vec4f(result + emissive, base.a);

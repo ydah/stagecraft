@@ -19,6 +19,7 @@ struct Light {
 struct ObjectUniforms {
   model: mat4x4f,
   normal_matrix: mat4x4f,
+  receive_shadow: u32,
 };
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;

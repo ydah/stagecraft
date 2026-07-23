@@ -17,4 +17,11 @@ RSpec.describe Stagecraft::Geometries do
       expect(geometry.index.count).to be_positive
     end
   end
+
+  it "accepts three.js-style keyword dimensions" do
+    expect(described_class.sphere(radius: 2).bounding_sphere.radius).to be_within(1.0e-5).of(2.0)
+    expect(described_class.box(width: 2, height: 4, depth: 6).bounding_box.max.to_a)
+      .to eq([1.0, 2.0, 3.0])
+    expect { described_class.cylinder(radius_top: 0) }.not_to raise_error
+  end
 end

@@ -23,7 +23,7 @@ module Stagecraft
       key = name.to_sym
       raise ArgumentError, "unsupported attribute #{name.inspect}" unless ATTRIBUTE_NAMES.include?(key)
 
-      @attributes[key] = Attribute.new(data:, format:, count:)
+      @attributes[key] = Attribute.new(data:, format:, count:) { changed! }
       changed!
       self
     end
@@ -44,7 +44,7 @@ module Stagecraft
 
     def set_index(data:, format:)
       ensure_alive!
-      @index = IndexAttribute.new(data:, format:)
+      @index = IndexAttribute.new(data:, format:) { changed! }
       changed!
       self
     end

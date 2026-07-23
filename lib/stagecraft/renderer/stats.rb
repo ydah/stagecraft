@@ -32,6 +32,10 @@ module Stagecraft
       def to_h
         COUNTERS.to_h { |counter| [counter, public_send(counter)] }
       end
+
+      def to_s
+        to_h.map { |name, value| "#{name}=#{value}" }.join(" ")
+      end
     end
   end
 end

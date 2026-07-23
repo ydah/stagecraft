@@ -40,7 +40,11 @@ module Stagecraft
       resize_from_window
       list = RenderList.new(scene, camera)
       update_stats(list)
-      return record_frame(list, camera) if @backend
+      if @backend
+        frame = record_frame(list, camera)
+        report_debug_stats
+        return frame
+      end
 
       light, light_vp = shadow_light_and_matrix(list)
       ordered_items = list.items
@@ -61,7 +65,7 @@ module Stagecraft
       queue.submit([encoder.finish])
       @context.present
       @resource_cache.advance_frame
-      Frame.new(
+      frame = Frame.new(
         texture: target_texture,
         width:,
         height:,
@@ -69,6 +73,8 @@ module Stagecraft
         queue:,
         readable: @context.surface.nil?
       )
+      report_debug_stats
+      frame
     end
 
     def resize(width, height)
@@ -287,6 +293,16 @@ module Stagecraft
 
     def elapsed_time
       Process.clock_gettime(Process::CLOCK_MONOTONIC) - @start_time
+    end
+
+    def report_debug_stats
+      return unless ENV["STAGECRAFT_DEBUG"] == "1"
+
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      return if @last_debug_report && now - @last_debug_report < 1.0
+
+      warn "Stagecraft #{stats}"
+      @last_debug_report = now
     end
 
     def ensure_alive!

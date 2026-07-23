@@ -29,6 +29,14 @@ RSpec.describe Stagecraft::Geometry do
     expect(values.each_slice(3).to_a).to all(eq([0.0, 0.0, 1.0]))
   end
 
+  it "invalidates the geometry when attribute storage changes" do
+    version = geometry.version
+
+    geometry.attribute(:position).data = positions
+
+    expect(geometry.version).to eq(version + 1)
+  end
+
   it "notifies explicit disposal once" do
     disposed = []
     geometry.on_dispose { |resource| disposed << resource }

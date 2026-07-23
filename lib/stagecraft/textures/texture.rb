@@ -16,8 +16,10 @@ module Stagecraft
 
       def self.load(source, **options)
         require "texel"
-        image = Texel.load(source, color_space: options.delete(:color_space))
-        new(image, **options)
+        color_space = options.delete(:color_space)
+        channels = options.delete(:channels)
+        image = Texel.load(source, channels:, color_space:)
+        new(image, color_space:, **options)
       end
 
       def image=(value)

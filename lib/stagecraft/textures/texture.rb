@@ -43,6 +43,7 @@ module Stagecraft
         return self if @disposed
 
         @disposed = true
+        @version += 1
         @dispose_callbacks.each { |callback| callback.call(self) }
         @dispose_callbacks.clear
         self

@@ -1,0 +1,165 @@
+//#include "common.wgsl"
+
+const PI = 3.14159265359;
+
+struct MaterialUniforms {
+  base_color: vec4f,
+  factors: vec4f,
+  emissive: vec4f,
+  texture_flags: vec4u,
+  emissive_map_flag: u32,
+  alpha_cutoff: f32,
+  _padding: vec2f,
+};
+
+@group(1) @binding(0) var<uniform> material: MaterialUniforms;
+@group(1) @binding(1) var material_sampler: sampler;
+@group(1) @binding(2) var base_color_map: texture_2d<f32>;
+@group(1) @binding(3) var mr_map: texture_2d<f32>;
+@group(1) @binding(4) var normal_map: texture_2d<f32>;
+@group(1) @binding(5) var occlusion_map: texture_2d<f32>;
+@group(1) @binding(6) var emissive_map: texture_2d<f32>;
+
+struct VertexInput {
+  @location(0) position: vec3f,
+//#if HAS_NORMAL
+  @location(1) normal: vec3f,
+//#endif
+//#if HAS_UV
+  @location(2) uv: vec2f,
+//#endif
+//#if HAS_TANGENT
+  @location(3) tangent: vec4f,
+//#endif
+//#if HAS_VERTEX_COLOR
+  @location(4) color: vec4f,
+//#endif
+//#if SKINNED
+  @location(5) joint: vec4u,
+  @location(6) weight: vec4f,
+//#endif
+};
+
+struct VertexOutput {
+  @builtin(position) position: vec4f,
+  @location(0) world_position: vec3f,
+  @location(1) normal: vec3f,
+  @location(2) uv: vec2f,
+  @location(3) color: vec4f,
+};
+
+@vertex fn vs_main(input: VertexInput) -> VertexOutput {
+  var output: VertexOutput;
+  var local_position = vec4f(input.position, 1.0);
+//#if SKINNED
+  let skin = input.weight.x * joints[input.joint.x] +
+             input.weight.y * joints[input.joint.y] +
+             input.weight.z * joints[input.joint.z] +
+             input.weight.w * joints[input.joint.w];
+  local_position = skin * local_position;
+//#endif
+  let world = object.model * local_position;
+  output.position = frame.view_proj * world;
+  output.world_position = world.xyz;
+//#if HAS_NORMAL
+  output.normal = normalize((object.normal_matrix * vec4f(input.normal, 0.0)).xyz);
+//#else
+  output.normal = vec3f(0.0, 1.0, 0.0);
+//#endif
+//#if HAS_UV
+  output.uv = input.uv;
+//#else
+  output.uv = vec2f(0.0);
+//#endif
+//#if HAS_VERTEX_COLOR
+  output.color = input.color;
+//#else
+  output.color = vec4f(1.0);
+//#endif
+  return output;
+}
+
+fn distribution_ggx(n_dot_h: f32, roughness: f32) -> f32 {
+  let a = roughness * roughness;
+  let a2 = a * a;
+  let denominator = n_dot_h * n_dot_h * (a2 - 1.0) + 1.0;
+  return a2 / max(PI * denominator * denominator, 0.0001);
+}
+
+fn geometry_schlick(n_dot_v: f32, roughness: f32) -> f32 {
+  let r = roughness + 1.0;
+  let k = (r * r) / 8.0;
+  return n_dot_v / max(n_dot_v * (1.0 - k) + k, 0.0001);
+}
+
+fn fresnel_schlick(cos_theta: f32, f0: vec3f) -> vec3f {
+  return f0 + (vec3f(1.0) - f0) * pow(1.0 - cos_theta, 5.0);
+}
+
+@fragment fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+  var base = material.base_color * input.color;
+  if (material.texture_flags.x != 0u) {
+    base *= textureSample(base_color_map, material_sampler, input.uv);
+  }
+//#if ALPHA_MASK
+  if (base.a < material.alpha_cutoff) { discard; }
+//#endif
+  var metallic = material.factors.x;
+  var roughness = max(material.factors.y, 0.04);
+  if (material.texture_flags.y != 0u) {
+    let mr = textureSample(mr_map, material_sampler, input.uv);
+    metallic *= mr.b;
+    roughness *= mr.g;
+  }
+  var normal = normalize(input.normal);
+  if (material.texture_flags.z != 0u) {
+    let mapped = textureSample(normal_map, material_sampler, input.uv).xyz * 2.0 - 1.0;
+    normal = normalize(normal + mapped * material.factors.z);
+  }
+  let view_direction = normalize(frame.camera_pos - input.world_position);
+  let f0 = mix(vec3f(0.04), base.rgb, metallic);
+  var result = frame.ambient * base.rgb * (1.0 - metallic);
+
+  for (var index = 0u; index < frame.light_count; index = index + 1u) {
+    let light = lights[index];
+    var light_direction = -light.direction;
+    var attenuation = 1.0;
+    if (light.kind != 0u) {
+      let to_light = light.position - input.world_position;
+      let distance = length(to_light);
+      light_direction = to_light / max(distance, 0.0001);
+      let ratio = distance / max(light.range, 0.0001);
+      attenuation = pow(clamp(1.0 - pow(ratio, 4.0), 0.0, 1.0), 2.0) /
+                    max(distance * distance, 0.0001);
+      if (light.kind == 2u) {
+        let angle = dot(-light_direction, light.direction);
+        attenuation *= smoothstep(light.cone.y, light.cone.x, angle);
+      }
+    }
+    let halfway = normalize(view_direction + light_direction);
+    let n_dot_l = max(dot(normal, light_direction), 0.0);
+    let n_dot_v = max(dot(normal, view_direction), 0.0);
+    let n_dot_h = max(dot(normal, halfway), 0.0);
+    let h_dot_v = max(dot(halfway, view_direction), 0.0);
+    let fresnel = fresnel_schlick(h_dot_v, f0);
+    let specular = distribution_ggx(n_dot_h, roughness) *
+                   geometry_schlick(n_dot_v, roughness) *
+                   geometry_schlick(n_dot_l, roughness) * fresnel /
+                   max(4.0 * n_dot_v * n_dot_l, 0.0001);
+    let diffuse = (vec3f(1.0) - fresnel) * (1.0 - metallic) * base.rgb / PI;
+    var visibility = 1.0;
+    if (light.kind == 0u && index == 0u) {
+      visibility = shadow_visibility(input.world_position);
+    }
+    result += (diffuse + specular) * light.color * n_dot_l * attenuation * visibility;
+  }
+  var emissive = material.emissive.rgb * material.emissive.a;
+  if (material.emissive_map_flag != 0u) {
+    emissive *= textureSample(emissive_map, material_sampler, input.uv).rgb;
+  }
+  if (material.texture_flags.w != 0u) {
+    result *= mix(1.0, textureSample(occlusion_map, material_sampler, input.uv).r,
+                  material.factors.w);
+  }
+  return vec4f(result + emissive, base.a);
+}

@@ -14,6 +14,7 @@ RSpec.describe Stagecraft::Materials::PBR do
   it "rejects invalid physical parameters" do
     expect { described_class.new(metallic: 2.0) }.to raise_error(ArgumentError, /metallic/)
     expect { described_class.new(roughness: -1.0) }.to raise_error(ArgumentError, /roughness/)
+    expect { described_class.new(base_color_uv_set: 2) }.to raise_error(ArgumentError, /uv_set/)
   end
 
   it "derives transparent queue membership" do

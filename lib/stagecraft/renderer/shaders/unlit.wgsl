@@ -4,7 +4,8 @@ struct MaterialUniforms {
   color: vec4f,
   use_map: u32,
   alpha_cutoff: f32,
-  _padding: vec2f,
+  uv_set: u32,
+  _padding: f32,
   uv_transform: mat3x3f,
 };
 
@@ -17,6 +18,9 @@ struct VertexInput {
 //#if HAS_UV
   @location(2) uv: vec2f,
 //#endif
+//#if HAS_UV1
+  @location(7) uv1: vec2f,
+//#endif
 //#if SKINNED
   @location(5) joint: vec4u,
   @location(6) weight: vec4f,
@@ -26,6 +30,7 @@ struct VertexInput {
 struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) uv: vec2f,
+  @location(1) uv1: vec2f,
 };
 
 @vertex fn vs_main(input: VertexInput) -> VertexOutput {
@@ -41,9 +46,14 @@ struct VertexOutput {
   let world = object.model * local_position;
   output.position = frame.view_proj * world;
 //#if HAS_UV
-  output.uv = (material.uv_transform * vec3f(input.uv, 1.0)).xy;
+  output.uv = input.uv;
 //#else
   output.uv = vec2f(0.0);
+//#endif
+//#if HAS_UV1
+  output.uv1 = input.uv1;
+//#else
+  output.uv1 = output.uv;
 //#endif
   return output;
 }
@@ -51,7 +61,9 @@ struct VertexOutput {
 @fragment fn fs_main(input: VertexOutput) -> @location(0) vec4f {
   var color = material.color;
   if (material.use_map != 0u) {
-    color *= textureSample(color_map, material_sampler, input.uv);
+    let source_uv = select(input.uv, input.uv1, material.uv_set != 0u);
+    let uv = (material.uv_transform * vec3f(source_uv, 1.0)).xy;
+    color *= textureSample(color_map, material_sampler, uv);
   }
 //#if ALPHA_MASK
   if (color.a < material.alpha_cutoff) { discard; }

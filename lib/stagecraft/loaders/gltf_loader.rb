@@ -216,7 +216,8 @@ module Stagecraft
               **common,
               color: pbr.base_color_factor,
               map: texture_from_info(pbr.base_color_texture, :srgb),
-              uv_transform: uv_transform(pbr.base_color_texture)
+              uv_transform: uv_transform(pbr.base_color_texture),
+              uv_set: uv_set(pbr.base_color_texture)
             )
           else
             Materials::PBR.new(
@@ -224,20 +225,25 @@ module Stagecraft
               base_color: pbr.base_color_factor,
               base_color_map: texture_from_info(pbr.base_color_texture, :srgb),
               base_color_uv_transform: uv_transform(pbr.base_color_texture),
+              base_color_uv_set: uv_set(pbr.base_color_texture),
               metallic: pbr.metallic_factor,
               roughness: pbr.roughness_factor,
               metallic_roughness_map: texture_from_info(pbr.metallic_roughness_texture, :linear),
               metallic_roughness_uv_transform: uv_transform(pbr.metallic_roughness_texture),
+              metallic_roughness_uv_set: uv_set(pbr.metallic_roughness_texture),
               normal_map: texture_from_info(source.normal_texture, :linear),
               normal_scale: source.normal_texture&.scale || 1.0,
               normal_uv_transform: uv_transform(source.normal_texture),
+              normal_uv_set: uv_set(source.normal_texture),
               occlusion_map: texture_from_info(source.occlusion_texture, :linear),
               occlusion_strength: source.occlusion_texture&.strength || 1.0,
               occlusion_uv_transform: uv_transform(source.occlusion_texture),
+              occlusion_uv_set: uv_set(source.occlusion_texture),
               emissive: source.emissive_factor,
               emissive_map: texture_from_info(source.emissive_texture, :srgb),
               emissive_strength: source.extension("KHR_materials_emissive_strength")&.emissive_strength || 1.0,
-              emissive_uv_transform: uv_transform(source.emissive_texture)
+              emissive_uv_transform: uv_transform(source.emissive_texture),
+              emissive_uv_set: uv_set(source.emissive_texture)
             )
           end
         end
@@ -283,6 +289,12 @@ module Stagecraft
       def uv_transform(info)
         matrix = info&.transform&.uv_matrix
         matrix ? Larb::Mat3.new(matrix) : Larb::Mat3.new
+      end
+
+      def uv_set(info)
+        return 0 unless info
+
+        Integer(info.transform&.tex_coord || info.tex_coord)
       end
 
       def convert_skin(source, mapping)

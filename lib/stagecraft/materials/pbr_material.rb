@@ -10,6 +10,10 @@ module Stagecraft
         base_color_uv_transform metallic_roughness_uv_transform normal_uv_transform
         occlusion_uv_transform emissive_uv_transform
       ].freeze
+      UV_SET_ATTRIBUTES = %i[
+        base_color_uv_set metallic_roughness_uv_set normal_uv_set
+        occlusion_uv_set emissive_uv_set
+      ].freeze
 
       def initialize(base_color: Color.new(1.0), base_color_map: nil, metallic: 1.0,
                      roughness: 1.0, metallic_roughness_map: nil, normal_map: nil,
@@ -19,7 +23,9 @@ module Stagecraft
                      metallic_roughness_uv_transform: Larb::Mat3.new,
                      normal_uv_transform: Larb::Mat3.new,
                      occlusion_uv_transform: Larb::Mat3.new,
-                     emissive_uv_transform: Larb::Mat3.new, **)
+                     emissive_uv_transform: Larb::Mat3.new,
+                     base_color_uv_set: 0, metallic_roughness_uv_set: 0,
+                     normal_uv_set: 0, occlusion_uv_set: 0, emissive_uv_set: 0, **)
         super(**)
         self.base_color = base_color
         self.base_color_map = base_color_map
@@ -34,6 +40,9 @@ module Stagecraft
         self.emissive_map = emissive_map
         self.emissive_strength = emissive_strength
         TRANSFORM_ATTRIBUTES.each do |name|
+          self.public_send(:"#{name}=", binding.local_variable_get(name))
+        end
+        UV_SET_ATTRIBUTES.each do |name|
           self.public_send(:"#{name}=", binding.local_variable_get(name))
         end
       end
@@ -54,6 +63,10 @@ module Stagecraft
         versioned_attribute name, coerce: lambda { |value|
           value.is_a?(Larb::Mat3) ? value : Larb::Mat3.new(value.to_a)
         }
+      end
+      UV_SET_ATTRIBUTES.each do |name|
+        versioned_attribute name, coerce: ->(value) { Integer(value) },
+                                  validate: ->(value) { value.between?(0, 1) }
       end
     end
 

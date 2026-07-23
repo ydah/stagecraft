@@ -82,7 +82,9 @@ RSpec.describe Stagecraft::Loaders::GLTF do
     source["materials"][0]["pbrMetallicRoughness"]["baseColorTexture"] = {
       "index" => 0,
       "extensions" => {
-        "KHR_texture_transform" => { "offset" => [0.25, 0.5], "scale" => [2.0, 2.0] }
+        "KHR_texture_transform" => {
+          "offset" => [0.25, 0.5], "scale" => [2.0, 2.0], "texCoord" => 1
+        }
       }
     }
 
@@ -94,6 +96,7 @@ RSpec.describe Stagecraft::Loaders::GLTF do
     expect(material.map.sampler.wrap_v).to eq(:mirror_repeat)
     expect(material.map.sampler.mipmap_filter).to eq(:nearest)
     expect(material.uv_transform.to_a).not_to eq(Larb::Mat3.new.to_a)
+    expect(material.uv_set).to eq(1)
   end
 
   it "expands normalized RGB colors to a WebGPU-compatible four-component format" do

@@ -5,7 +5,8 @@ module Stagecraft
     class PipelineFactory
       MaterialBinding = Struct.new(:version, :texture_versions, :buffer, :bind_group, :signature)
       ATTRIBUTE_LOCATIONS = {
-        position: 0, normal: 1, uv: 2, tangent: 3, color: 4, joints: 5, weights: 6
+        position: 0, normal: 1, uv: 2, tangent: 3, color: 4, joints: 5, weights: 6,
+        uv1: 7
       }.freeze
       FORMAT_SIZES = {
         float32: 4, float32x2: 8, float32x3: 12, float32x4: 16,
@@ -266,6 +267,10 @@ module Stagecraft
         bytes << [maps[4] ? 1 : 0].pack("L<")
         bytes << [material.alpha_cutoff].pack("e")
         bytes << "\0".b * 8
+        bytes << Materials::PBR::UV_SET_ATTRIBUTES.map { |name| material.public_send(name) }
+                                                     .first(4).pack("L<*")
+        bytes << [material.emissive_uv_set].pack("L<")
+        bytes << "\0".b * 12
         Materials::PBR::TRANSFORM_ATTRIBUTES.each do |name|
           bytes << pack_mat3(material.public_send(name))
         end
@@ -285,7 +290,8 @@ module Stagecraft
         bytes = color.pack("e*")
         bytes << [material.map ? 1 : 0].pack("L<")
         bytes << [material.alpha_cutoff].pack("e")
-        bytes << "\0".b * 8
+        bytes << [material.uv_set].pack("L<")
+        bytes << "\0".b * 4
         bytes << pack_mat3(material.uv_transform)
         [bytes, resolve_textures([material.map], [@resources.fallback_white])]
       end
@@ -336,7 +342,7 @@ module Stagecraft
         names = if shadow
                   %i[position joints weights]
                 elsif material.is_a?(Materials::Unlit)
-                  %i[position uv joints weights]
+                  %i[position uv uv1 joints weights]
                 else
                   ATTRIBUTE_LOCATIONS.keys
                 end

@@ -236,7 +236,7 @@ module Stagecraft
       names = if shadow
                 %i[position joints weights]
               elsif material.is_a?(Materials::Unlit)
-                %i[position uv joints weights]
+                %i[position uv uv1 joints weights]
               else
                 PipelineFactory::ATTRIBUTE_LOCATIONS.keys
               end

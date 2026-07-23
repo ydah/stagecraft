@@ -11,6 +11,7 @@ module Stagecraft
       ].freeze
       ATTRIBUTE_FEATURES = {
         uv: :HAS_UV,
+        uv1: :HAS_UV1,
         normal: :HAS_NORMAL,
         tangent: :HAS_TANGENT,
         color: :HAS_VERTEX_COLOR

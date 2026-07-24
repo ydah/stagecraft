@@ -8,6 +8,7 @@ module Stagecraft
       OBJECT_DATA_SIZE = 144
       FRAMES_IN_FLIGHT = 3
       LIGHT_SIZE = 80
+      GUARANTEED_SAMPLE_COUNTS = [1, 4].freeze
 
       attr_reader :device, :queue, :stats, :frame_layout, :object_layout, :empty_layout, :empty_group,
                   :shadow_frame_layout, :frame_group, :shadow_frame_group, :object_group,
@@ -15,13 +16,18 @@ module Stagecraft
                   :shadow_view, :fallback_white, :fallback_black, :fallback_normal,
                   :output_texture, :output_view, :width, :height, :sample_count
 
+      def self.guaranteed_sample_count(requested)
+        value = Integer(requested)
+        GUARANTEED_SAMPLE_COUNTS.reverse.find { |count| count <= value } ||
+          GUARANTEED_SAMPLE_COUNTS.first
+      end
+
       def initialize(context:, stats:, sample_count:)
         @context = context
         @device = context.device
         @queue = context.queue
         @stats = stats
-        @sample_count = Integer(sample_count)
-        @sample_count = 1 unless [1, 2, 4, 8].include?(@sample_count)
+        @sample_count = self.class.guaranteed_sample_count(sample_count)
         @frame_number = 0
         @object_capacity = 1
         @light_capacity = 1

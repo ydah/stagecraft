@@ -3,6 +3,16 @@
 require "spec_helper"
 
 RSpec.describe Stagecraft::Renderer::FrameResources do
+  describe ".guaranteed_sample_count" do
+    it "selects the highest WebGPU-guaranteed count within the request" do
+      expect(described_class.guaranteed_sample_count(8)).to eq(4)
+      expect(described_class.guaranteed_sample_count(4)).to eq(4)
+      expect(described_class.guaranteed_sample_count(2)).to eq(1)
+      expect(described_class.guaranteed_sample_count(1)).to eq(1)
+      expect(described_class.guaranteed_sample_count(0)).to eq(1)
+    end
+  end
+
   it "destroys owned buffers and shadow textures during disposal" do
     stats = Stagecraft::Renderer::Stats.new
     stats.increment(:buffers, 4)

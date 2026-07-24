@@ -2,7 +2,7 @@
 
 require_relative "support/demo"
 
-demo = StagecraftExamples::Demo.new(title: "16 — 8x MSAA", msaa: 8)
+demo = StagecraftExamples::Demo.new(title: "16 — 4x MSAA", msaa: 4)
 demo.light!
 demo.scene.add(
   Stagecraft::Mesh.new(

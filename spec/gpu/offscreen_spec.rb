@@ -15,6 +15,14 @@ RSpec.describe Stagecraft::Renderer, :gpu do
     expect(descriptor.new[:usage]).to eq(0)
   end
 
+  it "falls back to guaranteed 4x MSAA when 8x is requested" do
+    renderer = described_class.offscreen(width: 16, height: 16, msaa: 8)
+
+    expect(renderer.sample_count).to eq(4)
+  ensure
+    renderer&.dispose
+  end
+
   it "renders an offscreen image through the WebGPU frame graph" do
     scene = Stagecraft::Scene.new
     scene.add(Stagecraft::Lights::Ambient.new(intensity: 1.0))

@@ -6,6 +6,7 @@ module Stagecraft
       attr_reader :instance, :adapter, :device, :queue, :surface, :surface_format, :width, :height
 
       def initialize(window: nil, width:, height:, device: nil, queue: nil, surface: nil)
+        WGPUCompatibility.install!
         @window = window
         @width = Integer(width)
         @height = Integer(height)
@@ -87,6 +88,7 @@ module Stagecraft
 
       def initialize_wgpu
         require "wgpu"
+        WGPUCompatibility.install!
         @instance = WGPU::Instance.new
         @surface = @window&.create_surface(instance)
         @adapter = instance.request_adapter(compatible_surface: surface)

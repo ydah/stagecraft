@@ -3,6 +3,18 @@
 require "spec_helper"
 
 RSpec.describe Stagecraft::Renderer, :gpu do
+  it "initializes the native texture view usage field" do
+    require "wgpu"
+
+    described_class::WGPUCompatibility.install!
+    descriptor = WGPU::Native::TextureViewDescriptor
+
+    expect(descriptor.members.last).to eq(:usage)
+    expect(descriptor.offset_of(:usage)).to eq(56)
+    expect(descriptor.size).to eq(64)
+    expect(descriptor.new[:usage]).to eq(0)
+  end
+
   it "renders an offscreen image through the WebGPU frame graph" do
     scene = Stagecraft::Scene.new
     scene.add(Stagecraft::Lights::Ambient.new(intensity: 1.0))

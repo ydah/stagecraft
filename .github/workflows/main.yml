@@ -47,6 +47,8 @@ jobs:
         with:
           ruby-version: '4.0'
           bundler-cache: true
+      - name: Install wgpu-native
+        run: bundle exec ruby -C"$(bundle show wgpu)/ext/wgpu" extconf.rb
       - name: Run offscreen GPU specs
         env:
           STAGECRAFT_GPU_TESTS: '1'

@@ -37,5 +37,5 @@ Gem::Specification.new do |spec|
   spec.add_dependency "larb", "~> 1.0"
   spec.add_dependency "rgltf", "~> 1.0"
   spec.add_dependency "texel", "~> 0.1"
-  spec.add_dependency "wgpu", "~> 1.1"
+  spec.add_dependency "wgpu", "~> 1.1", "!= 1.2.0"
 end
